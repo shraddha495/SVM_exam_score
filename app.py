@@ -1,15 +1,13 @@
 from flask import Flask, render_template_string, request
 import numpy as np
 import pickle
+import os
 
 app = Flask(__name__)
 
 # Load trained SVR model
 with open('svm.pkl', 'rb') as f:
     model = pickle.load(f)
-
-# Features in model: age, gender, course, study_hours, class_attendance,
-# internet_access, sleep_hours, sleep_quality, study_method, facility_rating, exam_difficulty
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -229,25 +227,29 @@ def home():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    features = [
-        float(request.form['age']),
-        float(request.form['gender']),
-        float(request.form['course']),
-        float(request.form['study_hours']),
-        float(request.form['class_attendance']),
-        float(request.form['internet_access']),
-        float(request.form['sleep_hours']),
-        float(request.form['sleep_quality']),
-        float(request.form['study_method']),
-        float(request.form['facility_rating']),
-        float(request.form['exam_difficulty'])
-    ]
-    
-    final_features = [np.array(features)]
-    prediction = model.predict(final_features)
-    output = round(prediction[0], 2)
+    try:
+        features = [
+            float(request.form['age']),
+            float(request.form['gender']),
+            float(request.form['course']),
+            float(request.form['study_hours']),
+            float(request.form['class_attendance']),
+            float(request.form['internet_access']),
+            float(request.form['sleep_hours']),
+            float(request.form['sleep_quality']),
+            float(request.form['study_method']),
+            float(request.form['facility_rating']),
+            float(request.form['exam_difficulty'])
+        ]
+        
+        final_features = [np.array(features)]
+        prediction = model.predict(final_features)
+        output = round(prediction[0], 2)
 
-    return render_template_string(HTML_TEMPLATE, prediction_text=f'Predicted Score: {output}')
+        return render_template_string(HTML_TEMPLATE, prediction_text=f'Predicted Score: {output}')
+    except Exception as e:
+        return render_template_string(HTML_TEMPLATE, prediction_text=f'Error: {str(e)}')
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
