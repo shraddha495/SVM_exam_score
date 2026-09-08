@@ -1,13 +1,19 @@
-from flask import Flask, render_template_string, request
-import numpy as np
 import pickle
-import os
+import numpy as np
+from flask import Flask, request, jsonify, render_template_string
 
 app = Flask(__name__)
 
-# Load trained SVR model
+# Load the SVR model
 with open('svm.pkl', 'rb') as f:
     model = pickle.load(f)
+
+# Define feature order expected by the model
+FEATURE_NAMES = [
+    "age", "gender", "course", "study_hours", "class_attendance",
+    "internet_access", "sleep_hours", "sleep_quality",
+    "study_method", "facility_rating", "exam_difficulty"
+]
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -15,19 +21,33 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Performance Predictor</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <title>Academic Performance Predictor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%);
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: rgba(255, 255, 255, 0.12);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-pink: #ec4899;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --input-bg: rgba(15, 23, 42, 0.6);
+            --shadow-glow: 0 20px 40px -15px rgba(139, 92, 246, 0.3);
+            --shadow-card: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Poppins', sans-serif;
+            font-family: 'Inter', sans-serif;
         }
 
         body {
-            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-            color: #f8fafc;
+            background: var(--bg-gradient);
+            color: var(--text-main);
             min-height: 100vh;
             display: flex;
             justify-content: center;
@@ -36,187 +56,220 @@ HTML_TEMPLATE = """
         }
 
         .container {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 2.5rem;
-            max-width: 800px;
             width: 100%;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5),
-                        0 0 30px rgba(99, 102, 241, 0.2);
+            max-width: 900px;
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow: var(--shadow-card);
+            animation: fadeIn 0.8s ease-out;
         }
 
-        h2 {
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .header {
             text-align: center;
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(to right, #818cf8, #c084fc);
+            margin-bottom: 2.5rem;
+        }
+
+        .header h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #a78bfa, #f472b6);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
         }
 
-        p.subtitle {
-            text-align: center;
-            color: #94a3b8;
-            margin-bottom: 2rem;
+        .header p {
+            color: var(--text-muted);
             font-size: 0.95rem;
         }
 
         .form-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 1.2rem;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.25rem;
         }
 
         .input-group {
             display: flex;
             flex-direction: column;
+            gap: 0.5rem;
         }
 
-        label {
+        .input-group label {
             font-size: 0.85rem;
-            margin-bottom: 0.4rem;
-            color: #cbd5e1;
             font-weight: 500;
+            color: var(--text-muted);
+            text-transform: capitalize;
+            letter-spacing: 0.5px;
         }
 
-        input, select {
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid #334155;
-            border-radius: 10px;
+        .input-group input, .input-group select {
+            background: var(--input-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
             padding: 0.75rem 1rem;
-            color: #fff;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
-        }
-
-        input:focus, select:focus {
+            color: var(--text-main);
+            font-size: 0.95rem;
             outline: none;
-            border-color: #6366f1;
-            box-shadow: 0 0 12px rgba(99, 102, 241, 0.4),
-                        inset 0 2px 4px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
         }
 
-        button {
+        .input-group input:focus, .input-group select:focus {
+            border-color: var(--accent-purple);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
+        }
+
+        .submit-btn {
             grid-column: 1 / -1;
             margin-top: 1rem;
-            padding: 0.9rem;
-            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-            color: white;
+            padding: 1rem;
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue));
+            color: white;
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
-            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
-            transition: all 0.3s ease;
+            box-shadow: var(--shadow-glow);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
-        button:hover {
+        .submit-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 15px 25px rgba(99, 102, 241, 0.5);
+            box-shadow: 0 25px 45px -10px rgba(139, 92, 246, 0.5);
         }
 
-        button:active {
+        .submit-btn:active {
             transform: translateY(0);
         }
 
-        .result-box {
+        .result-card {
             margin-top: 2rem;
-            padding: 1.2rem;
-            border-radius: 12px;
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 1.5rem;
+            border-radius: 16px;
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.3);
             text-align: center;
-            box-shadow: 0 10px 25px rgba(16, 185, 129, 0.15);
-            animation: fadeIn 0.5s ease-in-out;
+            display: none;
+            animation: slideUp 0.5s ease-out;
         }
 
-        .result-box h3 {
-            color: #34d399;
-            font-size: 1.4rem;
-        }
-
-        @keyframes fadeIn {
+        @keyframes slideUp {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-card h2 {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .result-card .score {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #f472b6;
         }
     </style>
 </head>
 <body>
-
-<div class="container">
-    <h2>Performance Predictor</h2>
-    <p class="subtitle">Enter student details to generate predicted score</p>
-
-    <form method="POST" action="/predict" class="form-grid">
-        <div class="input-group">
-            <label>Age</label>
-            <input type="number" name="age" required min="10" max="100" value="20">
+    <div class="container">
+        <div class="header">
+            <h1>SVR Performance Predictor</h1>
+            <p>Enter the student metrics below to compute predicted outcome</p>
         </div>
+        <form id="predict-form" class="form-grid">
+            <div class="input-group">
+                <label>Age</label>
+                <input type="number" name="age" step="any" required placeholder="e.g. 20">
+            </div>
+            <div class="input-group">
+                <label>Gender (Encoded)</label>
+                <input type="number" name="gender" step="any" required placeholder="e.g. 0 or 1">
+            </div>
+            <div class="input-group">
+                <label>Course (Encoded)</label>
+                <input type="number" name="course" step="any" required placeholder="e.g. 1">
+            </div>
+            <div class="input-group">
+                <label>Study Hours</label>
+                <input type="number" name="study_hours" step="any" required placeholder="e.g. 5.5">
+            </div>
+            <div class="input-group">
+                <label>Class Attendance (%)</label>
+                <input type="number" name="class_attendance" step="any" required placeholder="e.g. 85">
+            </div>
+            <div class="input-group">
+                <label>Internet Access</label>
+                <select name="internet_access" required>
+                    <option value="1">Yes (1)</option>
+                    <option value="0">No (0)</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Sleep Hours</label>
+                <input type="number" name="sleep_hours" step="any" required placeholder="e.g. 7">
+            </div>
+            <div class="input-group">
+                <label>Sleep Quality (1-5)</label>
+                <input type="number" name="sleep_quality" step="any" required placeholder="e.g. 4">
+            </div>
+            <div class="input-group">
+                <label>Study Method (Encoded)</label>
+                <input type="number" name="study_method" step="any" required placeholder="e.g. 2">
+            </div>
+            <div class="input-group">
+                <label>Facility Rating (1-5)</label>
+                <input type="number" name="facility_rating" step="any" required placeholder="e.g. 3">
+            </div>
+            <div class="input-group">
+                <label>Exam Difficulty (1-5)</label>
+                <input type="number" name="exam_difficulty" step="any" required placeholder="e.g. 3">
+            </div>
+            <button type="submit" class="submit-btn">Generate Prediction</button>
+        </form>
 
-        <div class="input-group">
-            <label>Gender (0: Female, 1: Male)</label>
-            <input type="number" name="gender" required min="0" max="1" value="0">
+        <div id="result" class="result-card">
+            <h2>Predicted Output Score</h2>
+            <div id="score-val" class="score">--</div>
         </div>
-
-        <div class="input-group">
-            <label>Course Code</label>
-            <input type="number" name="course" required value="1">
-        </div>
-
-        <div class="input-group">
-            <label>Study Hours / Day</label>
-            <input type="number" step="0.1" name="study_hours" required value="5.5">
-        </div>
-
-        <div class="input-group">
-            <label>Class Attendance (%)</label>
-            <input type="number" step="0.1" name="class_attendance" required value="85.0">
-        </div>
-
-        <div class="input-group">
-            <label>Internet Access (0: No, 1: Yes)</label>
-            <input type="number" name="internet_access" required min="0" max="1" value="1">
-        </div>
-
-        <div class="input-group">
-            <label>Sleep Hours / Night</label>
-            <input type="number" step="0.1" name="sleep_hours" required value="7.0">
-        </div>
-
-        <div class="input-group">
-            <label>Sleep Quality (1-5)</label>
-            <input type="number" name="sleep_quality" required min="1" max="5" value="4">
-        </div>
-
-        <div class="input-group">
-            <label>Study Method Code</label>
-            <input type="number" name="study_method" required value="1">
-        </div>
-
-        <div class="input-group">
-            <label>Facility Rating (1-5)</label>
-            <input type="number" name="facility_rating" required min="1" max="5" value="3">
-        </div>
-
-        <div class="input-group">
-            <label>Exam Difficulty (1-5)</label>
-            <input type="number" name="exam_difficulty" required min="1" max="5" value="3">
-        </div>
-
-        <button type="submit">Predict Result</button>
-    </form>
-
-    {% if prediction_text %}
-    <div class="result-box">
-        <h3>{{ prediction_text }}</h3>
     </div>
-    {% endif %}
-</div>
 
+    <script>
+        document.getElementById('predict-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = {};
+            formData.forEach((value, key) => data[key] = parseFloat(value));
+
+            const response = await fetch('/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            const resultCard = document.getElementById('result');
+            const scoreVal = document.getElementById('score-val');
+
+            if(result.prediction !== undefined) {
+                scoreVal.innerText = result.prediction.toFixed(2);
+                resultCard.style.display = 'block';
+            } else {
+                scoreVal.innerText = 'Error';
+                resultCard.style.display = 'block';
+            }
+        });
+    </script>
 </body>
 </html>
 """
@@ -228,28 +281,12 @@ def home():
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        features = [
-            float(request.form['age']),
-            float(request.form['gender']),
-            float(request.form['course']),
-            float(request.form['study_hours']),
-            float(request.form['class_attendance']),
-            float(request.form['internet_access']),
-            float(request.form['sleep_hours']),
-            float(request.form['sleep_quality']),
-            float(request.form['study_method']),
-            float(request.form['facility_rating']),
-            float(request.form['exam_difficulty'])
-        ]
-        
-        final_features = [np.array(features)]
-        prediction = model.predict(final_features)
-        output = round(prediction[0], 2)
-
-        return render_template_string(HTML_TEMPLATE, prediction_text=f'Predicted Score: {output}')
+        data = request.get_json()
+        features = [data[feature] for feature in FEATURE_NAMES]
+        prediction = model.predict([features])[0]
+        return jsonify({'prediction': float(prediction)})
     except Exception as e:
-        return render_template_string(HTML_TEMPLATE, prediction_text=f'Error: {str(e)}')
+        return jsonify({'error': str(e)}), 400
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
